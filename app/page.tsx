@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import postsData from '../posts.json';
 
 type Post = {
@@ -14,6 +14,7 @@ const posts = postsData as Post[];
 type SortKey = 'r' | 'e' | 'l' | 'c' | 's' | 'v' | 'd';
 type SortDir = 'asc' | 'desc';
 
+const OCR_CACHE_KEY = 'fblib-ocr-cache-v1';
 const fmt = (n: number) => n.toLocaleString();
 const proxied = (u: string) => u ? `/api/img?u=${encodeURIComponent(u)}` : '';
 
@@ -32,6 +33,25 @@ export default function Page() {
   const [genre, setGenre] = useState(genres[0]);
   const [customGenre, setCustomGenre] = useState('');
 
+  const [ocrCache, setOcrCache] = useState<Record<string, string>>({});
+  const [ocrStatus, setOcrStatus] = useState<Record<string, 'running' | 'error'>>({});
+  const [batchSize, setBatchSize] = useState(10);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const batchAbort = useRef(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(OCR_CACHE_KEY);
+      if (stored) setOcrCache(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OCR_CACHE_KEY, JSON.stringify(ocrCache));
+    } catch {}
+  }, [ocrCache]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     let arr = posts;
@@ -39,7 +59,8 @@ export default function Page() {
     if (q) {
       arr = arr.filter(p =>
         p.cap.toLowerCase().includes(q) ||
-        p.ocr.toLowerCase().includes(q)
+        p.ocr.toLowerCase().includes(q) ||
+        (ocrCache[p.id] || '').toLowerCase().includes(q)
       );
     }
     arr = [...arr].sort((a, b) => {
@@ -50,14 +71,14 @@ export default function Page() {
       return 0;
     });
     return arr;
-  }, [search, filterType, sortKey, sortDir]);
+  }, [search, filterType, sortKey, sortDir, ocrCache]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) {
       setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     } else {
       setSortKey(k);
-      setSortDir(k === 'd' ? 'desc' : 'desc');
+      setSortDir('desc');
     }
   }
 
@@ -66,10 +87,52 @@ export default function Page() {
     return <span className="arrow">{sortDir === 'desc' ? '▼' : '▲'}</span>;
   }
 
+  const ocrOne = useCallback(async (post: Post): Promise<boolean> => {
+    if (!post.img || ocrCache[post.id]) return true;
+    setOcrStatus(s => ({ ...s, [post.id]: 'running' }));
+    try {
+      const Tesseract = await import('tesseract.js');
+      const { data: { text } } = await Tesseract.recognize(proxied(post.img), 'eng');
+      const cleaned = text.replace(/\s+/g, ' ').trim();
+      setOcrCache(c => ({ ...c, [post.id]: cleaned || '(no text detected)' }));
+      setOcrStatus(s => { const x = { ...s }; delete x[post.id]; return x; });
+      return true;
+    } catch (e) {
+      setOcrStatus(s => ({ ...s, [post.id]: 'error' }));
+      return false;
+    }
+  }, [ocrCache]);
+
+  async function runBatch(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (batchProgress) return;
+    const targets = filtered.filter(p => p.img && !ocrCache[p.id]).slice(0, batchSize);
+    if (targets.length === 0) return;
+    batchAbort.current = false;
+    setBatchProgress({ done: 0, total: targets.length });
+    for (let i = 0; i < targets.length; i++) {
+      if (batchAbort.current) break;
+      await ocrOne(targets[i]);
+      setBatchProgress({ done: i + 1, total: targets.length });
+    }
+    setBatchProgress(null);
+  }
+
+  function cancelBatch() {
+    batchAbort.current = true;
+  }
+
+  function clearCache() {
+    if (confirm('Clear all OCR results? This cannot be undone.')) {
+      setOcrCache({});
+      try { localStorage.removeItem(OCR_CACHE_KEY); } catch {}
+    }
+  }
+
   function openRewrite() {
     if (!selected) return;
     const targetGenre = customGenre.trim() || genre;
-    const source = selected.ocr || selected.cap || '(no text on this post)';
+    const source = ocrCache[selected.id] || selected.cap || '(no text on this post)';
     const prompt = `I'm building social posts for a book account. Below is a post from a romantasy/dark-romance book page. Rewrite it for a "${targetGenre}" book account instead — keep the same emotional hook, format, and tone, but swap genre references so it fits ${targetGenre}.
 
 Original post text:
@@ -84,11 +147,16 @@ Give me 3 variations I can choose from.`;
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setSelected(null);
+      if (e.key === 'Escape') {
+        if (batchProgress) cancelBatch();
+        else setSelected(null);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [batchProgress]);
+
+  const cachedCount = Object.keys(ocrCache).length;
 
   return (
     <>
@@ -111,7 +179,30 @@ Give me 3 variations I can choose from.`;
           <option value="photo">Photos</option>
           <option value="reel">Reels</option>
         </select>
-        <div className="count">{filtered.length} of {posts.length} posts</div>
+
+        <div className="batch-controls">
+          <label>OCR next</label>
+          <select value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} disabled={!!batchProgress}>
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+          {!batchProgress ? (
+            <button onClick={runBatch}>Run OCR</button>
+          ) : (
+            <>
+              <span className="batch-status">OCR {batchProgress.done}/{batchProgress.total}…</span>
+              <button onClick={cancelBatch} className="cancel">Stop</button>
+            </>
+          )}
+          {cachedCount > 0 && (
+            <button onClick={clearCache} className="ghost" title="Clear OCR cache">Reset OCR</button>
+          )}
+        </div>
+
+        <div className="count">{filtered.length} of {posts.length} · {cachedCount} OCR'd</div>
       </div>
 
       <div className="table-wrap">
@@ -128,30 +219,46 @@ Give me 3 variations I can choose from.`;
               <th>Type</th>
               <th className="sortable" onClick={() => toggleSort('d')}>Date{arrow('d')}</th>
               <th>Caption</th>
-              <th>Text in image</th>
+              <th>Text in image (OCR)</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
               <tr><td colSpan={11}><div className="empty-state">Nothing matches.</div></td></tr>
             )}
-            {filtered.map((p) => (
-              <tr key={p.id || p.r} onClick={() => setSelected(p)}>
-                <td className="rank-cell">{p.r}</td>
-                <td>
-                  {p.img ? <img className="thumb" src={proxied(p.img)} alt="" loading="lazy" /> : null}
-                </td>
-                <td className="num num-big">{fmt(p.e)}</td>
-                <td className="num">{fmt(p.l)}</td>
-                <td className="num">{fmt(p.c)}</td>
-                <td className="num">{fmt(p.s)}</td>
-                <td className="num">{p.v ? fmt(p.v) : '—'}</td>
-                <td><span className={`type-badge ${p.t}`}>{p.t}</span></td>
-                <td className="date">{p.d}</td>
-                <td><div className="cap">{p.cap || <em style={{color:'var(--ink-soft)'}}>—</em>}</div></td>
-                <td><div className="ocr">{p.ocr || <em style={{color:'var(--ink-soft)'}}>—</em>}</div></td>
-              </tr>
-            ))}
+            {filtered.map((p) => {
+              const ocrText = ocrCache[p.id];
+              const status = ocrStatus[p.id];
+              return (
+                <tr key={p.id || p.r} onClick={() => setSelected(p)}>
+                  <td className="rank-cell">{p.r}</td>
+                  <td>
+                    {p.img ? <img className="thumb" src={proxied(p.img)} alt="" loading="lazy" /> : null}
+                  </td>
+                  <td className="num num-big">{fmt(p.e)}</td>
+                  <td className="num">{fmt(p.l)}</td>
+                  <td className="num">{fmt(p.c)}</td>
+                  <td className="num">{fmt(p.s)}</td>
+                  <td className="num">{p.v ? fmt(p.v) : '—'}</td>
+                  <td><span className={`type-badge ${p.t}`}>{p.t}</span></td>
+                  <td className="date">{p.d}</td>
+                  <td><div className="cap">{p.cap || <em style={{color:'var(--ink-soft)'}}>—</em>}</div></td>
+                  <td>
+                    {ocrText ? (
+                      <div className="ocr">{ocrText}</div>
+                    ) : status === 'running' ? (
+                      <span className="ocr-status">running…</span>
+                    ) : status === 'error' ? (
+                      <button className="ocr-btn" onClick={(e) => { e.stopPropagation(); ocrOne(p); }}>retry</button>
+                    ) : p.img ? (
+                      <button className="ocr-btn" onClick={(e) => { e.stopPropagation(); ocrOne(p); }}>OCR</button>
+                    ) : (
+                      <em style={{color:'var(--ink-soft)'}}>—</em>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -182,13 +289,23 @@ Give me 3 variations I can choose from.`;
             </div>
 
             <div className="section">
-              <div className="section-label">Text in image</div>
-              <div className={`body ocr-body ${!selected.ocr ? 'empty' : ''}`}>{selected.ocr || '(no text detected in the image)'}</div>
+              <div className="section-label">
+                Text in image (OCR){' '}
+                {!ocrCache[selected.id] && selected.img && ocrStatus[selected.id] !== 'running' && (
+                  <button className="ocr-btn-inline" onClick={() => ocrOne(selected)}>
+                    {ocrStatus[selected.id] === 'error' ? 'Retry OCR' : 'Run OCR'}
+                  </button>
+                )}
+                {ocrStatus[selected.id] === 'running' && <span className="ocr-status"> running…</span>}
+              </div>
+              <div className={`body ocr-body ${!ocrCache[selected.id] ? 'empty' : ''}`}>
+                {ocrCache[selected.id] || (selected.img ? '(click Run OCR above)' : '(no image)')}
+              </div>
             </div>
 
             <div className="rewrite-box">
               <h3>Rewrite for another genre</h3>
-              <p>Opens Claude with this post's text pre-loaded and a rewrite prompt for the genre you pick.</p>
+              <p>Uses the OCR text if available, otherwise the caption. Opens Claude in a new tab.</p>
               <div className="rewrite-controls">
                 <select value={genre} onChange={(e) => { setGenre(e.target.value); setCustomGenre(''); }}>
                   {genres.map(g => <option key={g} value={g}>{g}</option>)}
