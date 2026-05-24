@@ -177,16 +177,38 @@ Give me 3 variations I can choose from.`;
     window.open(url, '_blank');
   }
 
+  const currentIdx = selected ? filtered.findIndex(p => p.id === selected.id) : -1;
+  const canGoPrev = currentIdx > 0;
+  const canGoNext = currentIdx >= 0 && currentIdx < filtered.length - 1;
+
+  const goPrev = useCallback(() => {
+    if (canGoPrev) setSelected(filtered[currentIdx - 1]);
+  }, [canGoPrev, currentIdx, filtered]);
+
+  const goNext = useCallback(() => {
+    if (canGoNext) setSelected(filtered[currentIdx + 1]);
+  }, [canGoNext, currentIdx, filtered]);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (batchProgress) cancelBatch();
         else setSelected(null);
+        return;
+      }
+      if (selected && (e.metaKey || e.ctrlKey)) {
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          goNext();
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          goPrev();
+        }
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [batchProgress]);
+  }, [batchProgress, selected, goNext, goPrev]);
 
   const cachedCount = Object.keys(ocrCache).length;
 
@@ -302,8 +324,15 @@ Give me 3 variations I can choose from.`;
         <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
           <div className="detail">
             <div className="close">
-              <h2>Post #{selected.r}</h2>
-              <button onClick={() => setSelected(null)} aria-label="Close">✕</button>
+              <div className="header-left">
+                <h2>Post #{selected.r}</h2>
+                <span className="position">{currentIdx + 1} of {filtered.length}</span>
+              </div>
+              <div className="nav-buttons">
+                <button onClick={goPrev} disabled={!canGoPrev} title="Previous (⌘←)" className="nav-btn">←</button>
+                <button onClick={goNext} disabled={!canGoNext} title="Next (⌘→)" className="nav-btn">→</button>
+                <button onClick={() => setSelected(null)} aria-label="Close" className="close-btn">✕</button>
+              </div>
             </div>
 
             {selected.img && (

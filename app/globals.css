@@ -191,16 +191,59 @@ tbody td {
   align-items: center;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
+  gap: 12px;
 }
-.detail .close button {
+.detail .close .header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.detail .close .position {
+  color: var(--ink-soft);
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 13px;
+}
+.detail .close .nav-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.detail .close .nav-btn {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  color: var(--gold);
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.detail .close .nav-btn:hover:not(:disabled) {
+  background: var(--gold);
+  color: var(--bg);
+  border-color: var(--gold);
+}
+.detail .close .nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.detail .close .close-btn {
   background: none;
   border: none;
   color: var(--ink-muted);
   font-size: 22px;
   cursor: pointer;
   font-family: 'Cormorant Garamond', serif;
+  padding: 0 8px;
+  margin-left: 4px;
 }
-.detail .close button:hover { color: var(--gold); }
+.detail .close .close-btn:hover { color: var(--gold); }
 .detail h2 {
   font-family: 'Cormorant Garamond', serif;
   font-weight: 500;
