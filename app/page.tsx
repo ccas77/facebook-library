@@ -129,6 +129,38 @@ export default function Page() {
     }
   }
 
+  function escapeCsv(v: any) {
+    const s = String(v ?? '');
+    if (/[",\n\r]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  function downloadOcrCsv() {
+    const rows: any[][] = [];
+    rows.push(['rank', 'engagement', 'likes', 'comments', 'shares', 'views', 'type', 'date', 'caption', 'ocr_text', 'post_url', 'image_url']);
+    for (const p of filtered) {
+      const ocr = ocrCache[p.id];
+      if (!ocr) continue;
+      rows.push([p.r, p.e, p.l, p.c, p.s, p.v, p.t, p.d, p.cap, ocr, p.url, p.img]);
+    }
+    if (rows.length <= 1) {
+      alert('No OCR text in the current view to download. Run OCR on some posts first, or adjust your filters.');
+      return;
+    }
+    const csv = '\uFEFF' + rows.map(r => r.map(escapeCsv).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `facebook-library-ocr-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function openRewrite() {
     if (!selected) return;
     const targetGenre = customGenre.trim() || genre;
@@ -198,7 +230,12 @@ Give me 3 variations I can choose from.`;
             </>
           )}
           {cachedCount > 0 && (
-            <button onClick={clearCache} className="ghost" title="Clear OCR cache">Reset OCR</button>
+            <>
+              <button onClick={downloadOcrCsv} className="download-btn" title="Download OCR text as CSV (respects current filter)">
+                ↓ CSV
+              </button>
+              <button onClick={clearCache} className="ghost" title="Clear OCR cache">Reset OCR</button>
+            </>
           )}
         </div>
 
@@ -296,11 +333,38 @@ Give me 3 variations I can choose from.`;
                     {ocrStatus[selected.id] === 'error' ? 'Retry OCR' : 'Run OCR'}
                   </button>
                 )}
+                {ocrCache[selected.id] && (
+                  <>
+                    <button
+                      className="ocr-btn-inline"
+                      onClick={() => {
+                        if (confirm('Re-run OCR on this post? Your edits will be lost.')) {
+                          setOcrCache(c => { const x = { ...c }; delete x[selected.id]; return x; });
+                          ocrOne(selected);
+                        }
+                      }}
+                    >
+                      Re-OCR
+                    </button>
+                    <span className="ocr-edit-hint"> · edit below, saves automatically</span>
+                  </>
+                )}
                 {ocrStatus[selected.id] === 'running' && <span className="ocr-status"> running…</span>}
               </div>
-              <div className={`body ocr-body ${!ocrCache[selected.id] ? 'empty' : ''}`}>
-                {ocrCache[selected.id] || (selected.img ? '(click Run OCR above)' : '(no image)')}
-              </div>
+              {ocrCache[selected.id] !== undefined ? (
+                <textarea
+                  className="ocr-textarea"
+                  value={ocrCache[selected.id]}
+                  onChange={(e) =>
+                    setOcrCache(c => ({ ...c, [selected.id]: e.target.value }))
+                  }
+                  spellCheck={true}
+                />
+              ) : (
+                <div className={`body ocr-body empty`}>
+                  {selected.img ? '(click Run OCR above)' : '(no image)'}
+                </div>
+              )}
             </div>
 
             <div className="rewrite-box">
