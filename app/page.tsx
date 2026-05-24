@@ -11,7 +11,7 @@ type Post = {
 
 const posts = postsData as Post[];
 
-type SortKey = 'r' | 'e' | 'l' | 'c' | 's' | 'v' | 'd';
+type SortKey = 'r' | 'l' | 'c' | 's' | 'v' | 'd';
 type SortDir = 'asc' | 'desc';
 
 const OCR_CACHE_KEY = 'fblib-ocr-cache-v1';
@@ -27,7 +27,7 @@ const genres = [
 export default function Page() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'photo' | 'reel'>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('e');
+  const [sortKey, setSortKey] = useState<SortKey>('l');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selected, setSelected] = useState<Post | null>(null);
   const [genre, setGenre] = useState(genres[0]);
@@ -139,11 +139,11 @@ export default function Page() {
 
   function downloadOcrCsv() {
     const rows: any[][] = [];
-    rows.push(['rank', 'engagement', 'likes', 'comments', 'shares', 'views', 'type', 'date', 'caption', 'ocr_text', 'post_url', 'image_url']);
+    rows.push(['rank', 'likes', 'comments', 'shares', 'views', 'type', 'date', 'caption', 'ocr_text', 'post_url', 'image_url']);
     for (const p of filtered) {
       const ocr = ocrCache[p.id];
       if (!ocr) continue;
-      rows.push([p.r, p.e, p.l, p.c, p.s, p.v, p.t, p.d, p.cap, ocr, p.url, p.img]);
+      rows.push([p.r, p.l, p.c, p.s, p.v, p.t, p.d, p.cap, ocr, p.url, p.img]);
     }
     if (rows.length <= 1) {
       alert('No OCR text in the current view to download. Run OCR on some posts first, or adjust your filters.');
@@ -248,7 +248,6 @@ Give me 3 variations I can choose from.`;
             <tr>
               <th className="rank-cell sortable" onClick={() => toggleSort('r')}>#{arrow('r')}</th>
               <th className="thumb-cell"></th>
-              <th className="sortable num" onClick={() => toggleSort('e')}>Engagement{arrow('e')}</th>
               <th className="sortable num" onClick={() => toggleSort('l')}>Likes{arrow('l')}</th>
               <th className="sortable num" onClick={() => toggleSort('c')}>Comments{arrow('c')}</th>
               <th className="sortable num" onClick={() => toggleSort('s')}>Shares{arrow('s')}</th>
@@ -261,7 +260,7 @@ Give me 3 variations I can choose from.`;
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={11}><div className="empty-state">Nothing matches.</div></td></tr>
+              <tr><td colSpan={10}><div className="empty-state">Nothing matches.</div></td></tr>
             )}
             {filtered.map((p) => {
               const ocrText = ocrCache[p.id];
@@ -272,8 +271,7 @@ Give me 3 variations I can choose from.`;
                   <td>
                     {p.img ? <img className="thumb" src={proxied(p.img)} alt="" loading="lazy" /> : null}
                   </td>
-                  <td className="num num-big">{fmt(p.e)}</td>
-                  <td className="num">{fmt(p.l)}</td>
+                  <td className="num num-big">{fmt(p.l)}</td>
                   <td className="num">{fmt(p.c)}</td>
                   <td className="num">{fmt(p.s)}</td>
                   <td className="num">{p.v ? fmt(p.v) : '—'}</td>
@@ -313,7 +311,6 @@ Give me 3 variations I can choose from.`;
             )}
 
             <div className="stats-row">
-              <div className="stat"><div className="v">{fmt(selected.e)}</div><div className="l">Engagement</div></div>
               <div className="stat"><div className="v">{fmt(selected.l)}</div><div className="l">Likes</div></div>
               <div className="stat"><div className="v">{fmt(selected.c)}</div><div className="l">Comments</div></div>
               <div className="stat"><div className="v">{fmt(selected.s)}</div><div className="l">Shares</div></div>
