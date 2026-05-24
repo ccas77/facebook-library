@@ -211,6 +211,18 @@ Give me 3 variations I can choose from.`;
   }, [batchProgress, selected, goNext, goPrev]);
 
   const cachedCount = Object.keys(ocrCache).length;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-focus the OCR textarea whenever a post is opened or we navigate
+  useEffect(() => {
+    if (selected && ocrCache[selected.id] !== undefined && textareaRef.current) {
+      const ta = textareaRef.current;
+      ta.focus();
+      // Place cursor at end without selecting all
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
+    }
+  }, [selected, ocrCache]);
 
   return (
     <>
@@ -335,32 +347,22 @@ Give me 3 variations I can choose from.`;
               </div>
             </div>
 
-            {selected.img && (
-              <img className="detail-img" src={proxied(selected.img)} alt="" />
-            )}
+            <div className="edit-pane">
+              {selected.img && (
+                <a href={selected.url} target="_blank" rel="noopener" className="detail-img-wrap" title="Open the original Facebook post">
+                  <img className="detail-img" src={proxied(selected.img)} alt="" />
+                </a>
+              )}
 
-            <div className="stats-row">
-              <div className="stat"><div className="v">{fmt(selected.l)}</div><div className="l">Likes</div></div>
-              <div className="stat"><div className="v">{fmt(selected.c)}</div><div className="l">Comments</div></div>
-              <div className="stat"><div className="v">{fmt(selected.s)}</div><div className="l">Shares</div></div>
-              {selected.v > 0 && <div className="stat"><div className="v">{fmt(selected.v)}</div><div className="l">Views</div></div>}
-            </div>
-
-            <div className="section">
-              <div className="section-label">Caption</div>
-              <div className={`body ${!selected.cap ? 'empty' : ''}`}>{selected.cap || '(no caption)'}</div>
-            </div>
-
-            <div className="section">
-              <div className="section-label">
-                Text in image (OCR){' '}
-                {!ocrCache[selected.id] && selected.img && ocrStatus[selected.id] !== 'running' && (
-                  <button className="ocr-btn-inline" onClick={() => ocrOne(selected)}>
-                    {ocrStatus[selected.id] === 'error' ? 'Retry OCR' : 'Run OCR'}
-                  </button>
-                )}
-                {ocrCache[selected.id] && (
-                  <>
+              <div className="ocr-pane">
+                <div className="section-label">
+                  Text in image (OCR){' '}
+                  {!ocrCache[selected.id] && selected.img && ocrStatus[selected.id] !== 'running' && (
+                    <button className="ocr-btn-inline" onClick={() => ocrOne(selected)}>
+                      {ocrStatus[selected.id] === 'error' ? 'Retry OCR' : 'Run OCR'}
+                    </button>
+                  )}
+                  {ocrCache[selected.id] && (
                     <button
                       className="ocr-btn-inline"
                       onClick={() => {
@@ -372,25 +374,42 @@ Give me 3 variations I can choose from.`;
                     >
                       Re-OCR
                     </button>
-                    <span className="ocr-edit-hint"> · edit below, saves automatically</span>
-                  </>
-                )}
-                {ocrStatus[selected.id] === 'running' && <span className="ocr-status"> running…</span>}
-              </div>
-              {ocrCache[selected.id] !== undefined ? (
-                <textarea
-                  className="ocr-textarea"
-                  value={ocrCache[selected.id]}
-                  onChange={(e) =>
-                    setOcrCache(c => ({ ...c, [selected.id]: e.target.value }))
-                  }
-                  spellCheck={true}
-                />
-              ) : (
-                <div className={`body ocr-body empty`}>
-                  {selected.img ? '(click Run OCR above)' : '(no image)'}
+                  )}
+                  {ocrStatus[selected.id] === 'running' && <span className="ocr-status"> running…</span>}
                 </div>
-              )}
+                {ocrCache[selected.id] !== undefined ? (
+                  <textarea
+                    ref={textareaRef}
+                    className="ocr-textarea"
+                    value={ocrCache[selected.id]}
+                    onChange={(e) =>
+                      setOcrCache(c => ({ ...c, [selected.id]: e.target.value }))
+                    }
+                    spellCheck={true}
+                    placeholder="OCR text — edit freely, saves as you type"
+                  />
+                ) : (
+                  <div className={`body ocr-body empty`}>
+                    {selected.img ? '(click Run OCR above)' : '(no image)'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="stats-row compact">
+              <div className="stat"><div className="v">{fmt(selected.l)}</div><div className="l">Likes</div></div>
+              <div className="stat"><div className="v">{fmt(selected.c)}</div><div className="l">Comments</div></div>
+              <div className="stat"><div className="v">{fmt(selected.s)}</div><div className="l">Shares</div></div>
+              {selected.v > 0 && <div className="stat"><div className="v">{fmt(selected.v)}</div><div className="l">Views</div></div>}
+              <div className="stat type-stat">
+                <div className="v" style={{textTransform:'capitalize'}}>{selected.t}</div>
+                <div className="l">{selected.d}</div>
+              </div>
+            </div>
+
+            <div className="section">
+              <div className="section-label">Caption</div>
+              <div className={`body ${!selected.cap ? 'empty' : ''}`}>{selected.cap || '(no caption)'}</div>
             </div>
 
             <div className="rewrite-box">
